@@ -4,5 +4,10 @@ protocol analyzer WHOIS over TCP:
 
 import WHOIS;
 
-on WHOIS::Request -> event WHOIS::request($conn, $is_orig, self.query);
-on WHOIS::Reply   -> event WHOIS::reply($conn, $is_orig, self.data);
+on WHOIS::Request -> event WHOIS::request($conn, $is_orig, self.query,
+    self.query_type);
+
+on WHOIS::Reply -> event WHOIS::reply($conn, $is_orig, self.resource,
+    self.owner, self.origin_as, self.registered, self.updated,
+    self.registry_expiry, self.abuse_contact, self.server_name,
+    self.name_server, self.status, self.reply_size);

@@ -2,9 +2,12 @@
 ##! Generates whois.log with structured field extraction, the logging model is
 ##! to log request and (selected) reply artefacts in a single record.
 ##!
+##! Parsing and field extraction happen in the Spicy analyzer; this script
+##! copies the extracted fields into the log record and computes the request-to-
+##! reply timing (which spans two events and so must live in Zeek).
+##!
 ##! See :rfc:`3912`.
 
-@load base/frameworks/notice/weird
 @load base/protocols/conn/removal-hooks
 
 module WHOIS;
@@ -75,19 +78,24 @@ export {
 	##
 	## query: The WHOIS query string, stripped of the line terminator.
 	##
+	## query_type: Classification of the query: domain, ipv4, ipv6, or asn.
+	##
 	## .. zeek:see:: WHOIS::reply
-	global WHOIS::request: event(c: connection, is_orig: bool, query: string);
+	global WHOIS::request: event(c: connection, is_orig: bool, query: string,
+	    query_type: string);
 
-	## Generated for WHOIS replies.
+	## Generated for WHOIS replies, carrying the fields the analyzer extracted
+	## from the reply text.
 	##
 	## c: The connection.
 	##
 	## is_orig: True if from the originator.
 	##
-	## data: The full server reply text, read until connection close.
-	##
 	## .. zeek:see:: WHOIS::request
-	global WHOIS::reply: event(c: connection, is_orig: bool, data: string);
+	global WHOIS::reply: event(c: connection, is_orig: bool, resource: string,
+	    owner: string, origin_as: string, registered: string, updated: string,
+	    registry_expiry: string, abuse_contact: string, server_name: string,
+	    name_server: set[string], status: set[string], reply_size: count);
 
 	## WHOIS finalization hook.
 	global finalize_whois: Conn::RemovalHook;
@@ -98,76 +106,6 @@ redef record connection += {
 };
 
 redef likely_server_ports += { ports };
-
-function classify_query(query: string): string
-	{
-	if ( /^[Aa][Ss][0-9]+$/ == query )
-		return "asn";
-
-	if ( is_valid_ip(query) )
-		return /:/ in query ? "ipv6" : "ipv4";
-
-	return "domain";
-	}
-
-function parse_reply(c: connection, data: string)
-	{
-	local w = c$whois;
-	local st: set[string];
-	local ns: set[string];
-
-	for ( _, line in split_string(data, /\x0a/) )
-		{
-		local kv = split_string1(line, /:[[:blank:]]*/);
-		if ( |kv| != 2 )
-			next;
-
-		local key = to_lower(strip(kv[0]));
-		local val = strip(kv[1]);
-
-		if ( |val| == 0 )
-			next;
-
-		if ( ! w?$resource && /^(domain name|netrange|cidr|inetnum|route|route6)$/ == key )
-			w$resource = val;
-
-		else if ( ! w?$owner && /^(registrar|org|org-name|orgname|organi[sz]ation|mnt-by)$/ == key )
-			w$owner = val;
-
-		else if ( ! w?$origin_as && /^(originas|origin)$/ == key )
-			w$origin_as = val;
-
-		else if ( ! w?$registered && /^(creation date|created|regdate)$/ == key )
-			w$registered = val;
-
-		else if ( ! w?$updated && /^(updated date|updated|last-modified)$/ == key )
-			w$updated = val;
-
-		# Anchoring is load-bearing: keys are matched whole (/^...$/) so
-		# boilerplate prose ("NOTICE: the expiration date ...") splits to
-		# key "notice" and cannot false-match these date labels.
-		else if ( ! w?$registry_expiry && /^(registry expiry date|registrar registration expiration date|expiry date|expiration date|paid-till)$/ == key )
-			w$registry_expiry = val;
-
-		else if ( ! w?$abuse_contact && /abuse contact email/ in key )
-			w$abuse_contact = val;
-
-		else if ( /^(domain status|status)$/ == key )
-			add st[val];
-
-		else if ( /^(name server|nserver)$/ == key )
-			add ns[to_lower(val)];
-
-		else if ( ! w?$server_name && /^source$/ == key )
-			w$server_name = val;
-		}
-
-	if ( |st| > 0 )
-		w$status = st;
-
-	if ( |ns| > 0 )
-		w$name_server = ns;
-	}
 
 event zeek_init() &priority=5
 	{
@@ -191,32 +129,49 @@ event analyzer_violation_info(atype: AllAnalyzers::Tag,
 		info$c$whois$violation = T;
 	}
 
-event WHOIS::request(c: connection, is_orig: bool, query: string)
+event WHOIS::request(c: connection, is_orig: bool, query: string,
+    query_type: string)
 	{
 	hook set_session(c);
 
 	c$whois$query = query;
-	c$whois$query_type = classify_query(query);
+	c$whois$query_type = query_type;
 	c$whois$request_time = network_time();
-
-	if ( |query| == 0 )
-		Reporter::conn_weird("whois_empty_request", c, "client sent empty WHOIS request");
-
-	if ( |query| > 512 )
-		Reporter::conn_weird("whois_oversized_request", c,
-		    fmt("query length %d is unusually large for a WHOIS request", |query|));
 	}
 
-event WHOIS::reply(c: connection, is_orig: bool, data: string)
+event WHOIS::reply(c: connection, is_orig: bool, resource: string,
+    owner: string, origin_as: string, registered: string, updated: string,
+    registry_expiry: string, abuse_contact: string, server_name: string,
+    name_server: set[string], status: set[string], reply_size: count)
 	{
 	hook set_session(c);
 
-	c$whois$reply_size = |data|;
+	local w = c$whois;
+	w$reply_size = reply_size;
 
-	if ( c$whois?$request_time )
-		c$whois$reply_time = network_time() - c$whois$request_time;
+	if ( w?$request_time )
+		w$reply_time = network_time() - w$request_time;
 
-	parse_reply(c, data);
+	if ( |resource| > 0 )
+		w$resource = resource;
+	if ( |owner| > 0 )
+		w$owner = owner;
+	if ( |origin_as| > 0 )
+		w$origin_as = origin_as;
+	if ( |registered| > 0 )
+		w$registered = registered;
+	if ( |updated| > 0 )
+		w$updated = updated;
+	if ( |registry_expiry| > 0 )
+		w$registry_expiry = registry_expiry;
+	if ( |abuse_contact| > 0 )
+		w$abuse_contact = abuse_contact;
+	if ( |server_name| > 0 )
+		w$server_name = server_name;
+	if ( |name_server| > 0 )
+		w$name_server = name_server;
+	if ( |status| > 0 )
+		w$status = status;
 	}
 
 hook finalize_whois(c: connection)

@@ -2,25 +2,109 @@ module WHOIS;
 
 import spicy;
 
+# RFC 3912 is a minimal request/response protocol: the client sends one query
+# line, the server returns free-form text and closes. The reply has no grammar
+# the RFC defines none, and registries/RIRs each format differently so the
+# reply is read as a blob and interpreted line-by-line here in Spicy. Lines
+# without a "key: value" shape (IRR route dumps, "# Not found", "Out of this
+# registry.") carry no recognised label and are skipped; parsing never fails on
+# them, which keeps the analyzer from rejecting genuine WHOIS.
+
+# Query classification, lifted from Zeek's is_valid_ip()/regex logic. WHOIS
+# queries are well-formed IPs, ASNs, or domains, so a regex shape test suffices
+# range-checking octets is unnecessary here and the registry validates anyway.
+# Case is spelled out ([Aa][Ss]) rather than using the /i flag so this compiles
+# on the Spicy 1.11 floor (Zeek 7.0); the /i flag is Spicy 1.13+.
+function classify(q: bytes): string {
+    if ( /^[Aa][Ss][0-9]+$/.match(q) > 0 )
+        return "asn";
+    if ( /^[0-9]{1,3}(\.[0-9]{1,3}){3}$/.match(q) > 0 )
+        return "ipv4";
+    if ( /^[0-9a-fA-F:]+(:[0-9a-fA-F:]*)+$/.match(q) > 0 )
+        return "ipv6";
+    return "domain";
+}
+
 public type Request = unit {
     raw_query: /[\x09\x20-\x7e\x80-\xff]*/;
 
     : /\r?/;
     : /\n/;
 
+    var query: bytes;
+    var query_type: string;
+
     on %done {
         self.query = self.raw_query.strip();
-        spicy::accept_input();
-    }
+        self.query_type = classify(self.query);
 
-    var query: bytes;
+        # The analyzer attaches on 43/tcp only (see scripts/main.zeek), so
+        # confirming on a parsed, non-empty query line is safe: the only traffic
+        # on 43 is WHOIS. An empty query is not a lookup and must not confirm.
+        if ( |self.query| > 0 )
+            spicy::accept_input();
+    }
 };
 
 public type Reply = unit {
+    # Bounded read for safety: cap the buffered reply at 64 KiB so a hostile or
+    # buggy server cannot stream unbounded data into the analyzer. A reply larger
+    # than this is truncated; field extraction and reply_size both reflect the
+    # captured bytes up to the cap, not the full wire length.
     data: bytes &size=65536 &eod;
 
+    var resource: bytes;
+    var owner: bytes;
+    var origin_as: bytes;
+    var registered: bytes;
+    var updated: bytes;
+    var registry_expiry: bytes;
+    var abuse_contact: bytes;
+    var server_name: bytes;
+    var name_server: set<bytes>;
+    var status: set<bytes>;
+    var reply_size: uint64;
+
     on %done {
-        if (|self.data| > 0)
+        self.reply_size = |self.data|;
+
+        for ( line in self.data.split(b"\n") ) {
+            local parts = line.split1(b":");
+            # No colon -> split1 returns (line, ""); skip non key/value lines.
+            if ( |parts[1]| == 0 )
+                continue;
+
+            local key = parts[0].strip().lower();
+            local val = parts[1].strip();
+            if ( |val| == 0 )
+                continue;
+
+            # Keys are matched whole (/^...$/) so boilerplate prose
+            # ("NOTICE: the expiration date ...") splits to key "notice" and
+            # cannot false-match a label. Single-valued fields are first-wins.
+            if ( |self.resource| == 0 && /^(domain name|netrange|cidr|inetnum|route|route6)$/.match(key) > 0 )
+                self.resource = val;
+            else if ( |self.owner| == 0 && /^(registrar|org|org-name|orgname|organi[sz]ation)$/.match(key) > 0 )
+                self.owner = val;
+            else if ( |self.origin_as| == 0 && /^(originas|origin)$/.match(key) > 0 )
+                self.origin_as = val;
+            else if ( |self.registered| == 0 && /^(creation date|created|regdate)$/.match(key) > 0 )
+                self.registered = val;
+            else if ( |self.updated| == 0 && /^(updated date|updated|last-modified)$/.match(key) > 0 )
+                self.updated = val;
+            else if ( |self.registry_expiry| == 0 && /^(registry expiry date|registrar registration expiration date|expiry date|expiration date|paid-till)$/.match(key) > 0 )
+                self.registry_expiry = val;
+            else if ( |self.abuse_contact| == 0 && /^(registrar abuse contact email|orgabuseemail|abuse-mailbox)$/.match(key) > 0 )
+                self.abuse_contact = val;
+            else if ( /^(domain status|status)$/.match(key) > 0 )
+                add self.status[val];
+            else if ( /^(name server|nserver)$/.match(key) > 0 )
+                add self.name_server[val.lower()];
+            else if ( |self.server_name| == 0 && /^source$/.match(key) > 0 )
+                self.server_name = val;
+        }
+
+        if ( self.reply_size > 0 )
             spicy::accept_input();
     }
 };
