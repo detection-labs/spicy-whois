@@ -1,0 +1,12 @@
+module Zeek_WHOIS;
+
+import WHOIS;
+import zeek;
+
+on WHOIS::Request::%error {
+    zeek::reject_protocol("error while parsing WHOIS request");
+}
+
+on WHOIS::Reply::%error {
+    zeek::reject_protocol("error while parsing WHOIS reply");
+}

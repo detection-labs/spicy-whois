@@ -1,0 +1,23 @@
+[package]
+script_dir = scripts
+test_command = cd testing && btest -c btest.cfg
+summary = Spicy-based analyzer for the WHOIS protocol
+description = Spicy-based analyzer for the WHOIS (RFC 3912) protocol.
+tags = whois, rfc 3912, spicy, protocol analyzer
+depends =
+	zeek >=6.1.0
+build_command = mkdir -p build && cd build && SPICYZ=$(command -v spicyz || echo %(package_base)s/spicy-plugin/build/bin/spicyz) cmake .. && cmake --build .
+
+[template]
+source = ssh://git@github.com/zeek/package-template
+zkg_version = 2.13.0
+features = spicy-protocol-analyzer license
+
+[template_vars]
+name = spicy-whois
+analyzer = WHOIS
+protocol = TCP
+unit_orig = Request
+unit_resp = Reply
+author = Craig P <https://github.com/detection-labs>
+license = bsd-3

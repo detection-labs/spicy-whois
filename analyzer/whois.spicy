@@ -1,0 +1,26 @@
+module WHOIS;
+
+import spicy;
+
+public type Request = unit {
+    raw_query: /[\x09\x20-\x7e\x80-\xff]*/;
+
+    : /\r?/;
+    : /\n/;
+
+    on %done {
+        self.query = self.raw_query.strip();
+        spicy::accept_input();
+    }
+
+    var query: bytes;
+};
+
+public type Reply = unit {
+    data: bytes &size=65536 &eod;
+
+    on %done {
+        if (|self.data| > 0)
+            spicy::accept_input();
+    }
+};
