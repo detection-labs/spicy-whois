@@ -49,7 +49,7 @@ public type Reply = unit {
     # buggy server cannot stream unbounded data into the analyzer. A reply larger
     # than this is truncated; field extraction and reply_size both reflect the
     # captured bytes up to the cap, not the full wire length.
-    data: bytes &size=65536 &eod;
+    data: bytes &eod &max-size=65536;
 
     var resource: bytes;
     var owner: bytes;
