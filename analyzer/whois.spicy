@@ -26,16 +26,14 @@ function classify(q: bytes): string {
 }
 
 public type Request = unit {
-    raw_query: /[\x09\x20-\x7e\x80-\xff]*/;
+    query: /[\x09\x20-\x7e\x80-\xff]*/ &convert=$$.strip();
 
     : /\r?/;
     : /\n/;
 
-    var query: bytes;
     var query_type: string;
 
     on %done {
-        self.query = self.raw_query.strip();
         self.query_type = classify(self.query);
 
         # The analyzer attaches on 43/tcp only (see scripts/main.zeek), so
