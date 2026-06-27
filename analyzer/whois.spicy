@@ -26,7 +26,7 @@ function classify(q: bytes): string {
 }
 
 public type Request = unit {
-    query: /[\x09\x20-\x7e\x80-\xff]*/ &convert=$$.strip();
+    query: /[\x09\x20-\x7e\x80-\xff]*/ &max-size=MAX_SIZE &convert=$$.strip();
 
     : /\r?/;
     : /\n/;
@@ -45,11 +45,7 @@ public type Request = unit {
 };
 
 public type Reply = unit {
-    # Bounded read for safety: cap the buffered reply at 64 KiB so a hostile or
-    # buggy server cannot stream unbounded data into the analyzer. A reply larger
-    # than this is truncated; field extraction and reply_size both reflect the
-    # captured bytes up to the cap, not the full wire length.
-    data: bytes &eod &max-size=65536;
+    data: bytes &eod &max-size=MAX_SIZE;
 
     var resource: bytes;
     var owner: bytes;
@@ -106,3 +102,8 @@ public type Reply = unit {
             spicy::accept_input();
     }
 };
+
+# Limit on maximum message length we accept. This is to prevent buggy or
+# hostile clients or servers leading to unbounded memory consumption. Any
+# larger message triggers an parse error/analyzer violation.
+const MAX_SIZE = 65536;
