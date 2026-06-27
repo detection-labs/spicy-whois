@@ -81,8 +81,7 @@ export {
 	## query_type: Classification of the query: domain, ipv4, ipv6, or asn.
 	##
 	## .. zeek:see:: WHOIS::reply
-	global WHOIS::request: event(c: connection, is_orig: bool, query: string,
-	    query_type: string);
+	global WHOIS::request: event(c: connection, is_orig: bool, request: WHOIS::Request);
 
 	## Generated for WHOIS replies, carrying the fields the analyzer extracted
 	## from the reply text.
@@ -92,10 +91,7 @@ export {
 	## is_orig: True if from the originator.
 	##
 	## .. zeek:see:: WHOIS::request
-	global WHOIS::reply: event(c: connection, is_orig: bool, resource: string,
-	    owner: string, origin_as: string, registered: string, updated: string,
-	    registry_expiry: string, abuse_contact: string, server_name: string,
-	    name_server: set[string], status: set[string], reply_size: count);
+	global WHOIS::reply: event(c: connection, is_orig: bool, reply: WHOIS::Reply);
 
 	## WHOIS finalization hook.
 	global finalize_whois: Conn::RemovalHook;
@@ -129,49 +125,45 @@ event analyzer_violation_info(atype: AllAnalyzers::Tag,
 		info$c$whois$violation = T;
 	}
 
-event WHOIS::request(c: connection, is_orig: bool, query: string,
-    query_type: string)
+event WHOIS::request(c: connection, is_orig: bool, request: WHOIS::Request)
 	{
 	hook set_session(c);
 
-	c$whois$query = query;
-	c$whois$query_type = query_type;
+	c$whois$query = request$query;
+	c$whois$query_type = request$query_type;
 	c$whois$request_time = network_time();
 	}
 
-event WHOIS::reply(c: connection, is_orig: bool, resource: string,
-    owner: string, origin_as: string, registered: string, updated: string,
-    registry_expiry: string, abuse_contact: string, server_name: string,
-    name_server: set[string], status: set[string], reply_size: count)
+event WHOIS::reply(c: connection, is_orig: bool, reply: WHOIS::Reply)
 	{
 	hook set_session(c);
 
 	local w = c$whois;
-	w$reply_size = reply_size;
+	w$reply_size = reply$reply_size;
 
 	if ( w?$request_time )
 		w$reply_time = network_time() - w$request_time;
 
-	if ( |resource| > 0 )
-		w$resource = resource;
-	if ( |owner| > 0 )
-		w$owner = owner;
-	if ( |origin_as| > 0 )
-		w$origin_as = origin_as;
-	if ( |registered| > 0 )
-		w$registered = registered;
-	if ( |updated| > 0 )
-		w$updated = updated;
-	if ( |registry_expiry| > 0 )
-		w$registry_expiry = registry_expiry;
-	if ( |abuse_contact| > 0 )
-		w$abuse_contact = abuse_contact;
-	if ( |server_name| > 0 )
-		w$server_name = server_name;
-	if ( |name_server| > 0 )
-		w$name_server = name_server;
-	if ( |status| > 0 )
-		w$status = status;
+	if ( |reply$resource| > 0 )
+		w$resource = reply$resource;
+	if ( |reply$owner| > 0 )
+		w$owner = reply$owner;
+	if ( |reply$origin_as| > 0 )
+		w$origin_as = reply$origin_as;
+	if ( |reply$registered| > 0 )
+		w$registered = reply$registered;
+	if ( |reply$updated| > 0 )
+		w$updated = reply$updated;
+	if ( |reply$registry_expiry| > 0 )
+		w$registry_expiry = reply$registry_expiry;
+	if ( |reply$abuse_contact| > 0 )
+		w$abuse_contact = reply$abuse_contact;
+	if ( |reply$server_name| > 0 )
+		w$server_name = reply$server_name;
+	if ( |reply$name_server| > 0 )
+		w$name_server = reply$name_server;
+	if ( |reply$status| > 0 )
+		w$status = reply$status;
 	}
 
 hook finalize_whois(c: connection)
