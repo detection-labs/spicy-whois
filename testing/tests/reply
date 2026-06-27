@@ -1,0 +1,8 @@
+# @TEST-DOC: Unit-level testing of reply parsing.
+
+# @TEST-EXEC: spicyc ${DIST}/analyzer/whois.spicy -d -j -o whois.hlto
+
+# @TEST-EXEC: printf '' | spicy-dump whois.hlto -p WHOIS::Reply >empty 2>&1
+# @TEST-EXEC: btest-diff empty
+
+# TODO: add more coverage by baselining parsing behavior for actual payloads.
