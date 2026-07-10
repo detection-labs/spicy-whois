@@ -76,9 +76,8 @@ export {
 	##
 	## is_orig: True if from the originator.
 	##
-	## query: The WHOIS query string, stripped of the line terminator.
-	##
-	## query_type: Classification of the query: domain, ipv4, ipv6, or asn.
+	## request: The parsed request unit, carrying ``query`` (stripped of the
+	##          line terminator) and ``query_type`` (domain, ipv4, ipv6, or asn).
 	##
 	## .. zeek:see:: WHOIS::reply
 	global WHOIS::request: event(c: connection, is_orig: bool, request: WHOIS::Request);
@@ -89,6 +88,9 @@ export {
 	## c: The connection.
 	##
 	## is_orig: True if from the originator.
+	##
+	## reply: The parsed reply unit, carrying the extracted fields (resource,
+	##        owner, origin_as, dates, name_server/status sets, reply_size, ...).
 	##
 	## .. zeek:see:: WHOIS::request
 	global WHOIS::reply: event(c: connection, is_orig: bool, reply: WHOIS::Reply);

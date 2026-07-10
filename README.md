@@ -44,19 +44,16 @@ zkg install spicy-whois
 ## Events
 
 ```zeek
-event WHOIS::request(c: connection, is_orig: bool, query: string, query_type: string)
+event WHOIS::request(c: connection, is_orig: bool, request: WHOIS::Request)
 ```
 
-Raised for each client query, with `query` stripped of its line terminator and `query_type` classified as `domain`, `ipv4`, `ipv6`, or `asn`.
+Raised for each client query. The `request` unit carries `request$query` (stripped of its line terminator) and `request$query_type` (classified as `domain`, `ipv4`, `ipv6`, or `asn`).
 
 ```zeek
-event WHOIS::reply(c: connection, is_orig: bool, resource: string, owner: string,
-    origin_as: string, registered: string, updated: string, registry_expiry: string,
-    abuse_contact: string, server_name: string, name_server: set[string],
-    status: set[string], reply_size: count)
+event WHOIS::reply(c: connection, is_orig: bool, reply: WHOIS::Reply)
 ```
 
-Raised once per reply, carrying the fields the Spicy parser extracted from the server text (read until close, capped at 64 KB). Fields the reply did not contain arrive empty.
+Raised once per reply. The `reply` unit carries the fields the Spicy parser extracted from the server text (`reply$resource`, `reply$owner`, `reply$origin_as`, `reply$registered`, `reply$updated`, `reply$registry_expiry`, `reply$abuse_contact`, `reply$server_name`, `reply$name_server`, `reply$status`, `reply$reply_size`). The reply is read until close and bounded at 64 KB; a reply exceeding the cap raises a parse error and the connection is rejected (see [Parsing limits and bounds](#parsing-limits-and-bounds)). Fields the reply did not contain arrive empty.
 
 `WHOIS::log_whois(rec: WHOIS::Info)` is raised once per connection with the assembled `WHOIS::Info` record that is written to `whois.log`.
 See [WHOIS answer schema](#whois-answer-schema) for fields.
@@ -161,8 +158,8 @@ Because confirmation keys on conversation shape rather than reply content, addin
 
 Cutoff bounds protect against malformed / hostile traffic:
 
-- **Request line** ([`whois.spicy`](analyzer/whois.spicy)) — printable bytes (`\x09`, `\x20`–`\x7e`, `\x80`–`\xff` for IDN), terminated by an optional CR and a required LF. An empty query does not confirm; the analyzer only sets `service=whois` for a non-empty query line.
-- **Reply body** — read to close, capped at **64 KB** (`&size=65536 &eod`) as a safety bound against unbounded buffering; bytes past the cap are discarded, so field extraction and `reply_size` reflect the captured bytes up to the cap.
+- **Request line** ([`whois.spicy`](analyzer/whois.spicy)) — printable bytes (`\x09`, `\x20`–`\x7e`, `\x80`–`\xff` for IDN), bounded at **64 KB** (`&max-size=MAX_SIZE`) and terminated by an optional CR and a required LF. A query line exceeding the cap raises a parse error and the connection is rejected. An empty query does not confirm; the analyzer only sets `service=whois` for a non-empty query line.
+- **Reply body** — read to close, bounded at **64 KB** (`&eod &max-size=MAX_SIZE`) as a safety bound against unbounded buffering (this is a TCP analyzer). A reply exceeding the cap raises a parse error and `zeek::reject_protocol()` drops the connection — it is *not* silently truncated. In practice this only fires on anomalous or hostile replies: across an extensive corpus of real WHOIS traffic (all five RIRs, dozens of registries, IRR route dumps) the largest single reply was ~23 KB, well under the cap.
 - **Field extraction** ([`whois.spicy`](analyzer/whois.spicy)) — the Spicy parser splits the reply on LF, each line on its first `:`; keys lowercased, values stripped, empties skipped. Single-valued fields are **first-wins**; `status` and `name_server` accumulate into a set (`name_server` lowercased to dedup), bounded by the 64 KB cap.
 
 ## WHOIS answer schema

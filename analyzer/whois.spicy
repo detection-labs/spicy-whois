@@ -105,5 +105,5 @@ public type Reply = unit {
 
 # Limit on maximum message length we accept. This is to prevent buggy or
 # hostile clients or servers leading to unbounded memory consumption. Any
-# larger message triggers an parse error/analyzer violation.
+# larger message triggers a parse error/analyzer violation.
 const MAX_SIZE = 65536;
