@@ -45,14 +45,17 @@ public type Request = unit {
 };
 
 public type Reply = unit {
-    var resource: bytes;
-    var owner: bytes;
-    var origin_as: bytes;
-    var registered: bytes;
-    var updated: bytes;
-    var registry_expiry: bytes;
-    var abuse_contact: bytes;
-    var server_name: bytes;
+    # Single-valued fields are optional: unset means the reply carried no such
+    # label, distinct from a present-but-empty value. Set-valued fields
+    # (name_server, status) use an empty set for the same "absent" meaning.
+    var resource: optional<bytes>;
+    var owner: optional<bytes>;
+    var origin_as: optional<bytes>;
+    var registered: optional<bytes>;
+    var updated: optional<bytes>;
+    var registry_expiry: optional<bytes>;
+    var abuse_contact: optional<bytes>;
+    var server_name: optional<bytes>;
     var name_server: set<bytes>;
     var status: set<bytes>;
     var reply_size: uint64;
@@ -78,25 +81,25 @@ public type Reply = unit {
             # Keys are matched whole (/^...$/) so boilerplate prose
             # ("NOTICE: the expiration date ...") splits to key "notice" and
             # cannot false-match a label. Single-valued fields are first-wins.
-            if (|self.resource| == 0 && /^(domain name|netrange|cidr|inetnum|route|route6)$/.match(key) > 0)
+            if (!self.resource && /^(domain name|netrange|cidr|inetnum|route|route6)$/.match(key) > 0)
                 self.resource = val;
-            else if (|self.owner| == 0 && /^(registrar|org|org-name|orgname|organi[sz]ation)$/.match(key) > 0)
+            else if (!self.owner && /^(registrar|org|org-name|orgname|organi[sz]ation)$/.match(key) > 0)
                 self.owner = val;
-            else if (|self.origin_as| == 0 && /^(originas|origin)$/.match(key) > 0)
+            else if (!self.origin_as && /^(originas|origin)$/.match(key) > 0)
                 self.origin_as = val;
-            else if (|self.registered| == 0 && /^(creation date|created|regdate)$/.match(key) > 0)
+            else if (!self.registered && /^(creation date|created|regdate)$/.match(key) > 0)
                 self.registered = val;
-            else if (|self.updated| == 0 && /^(updated date|updated|last-modified)$/.match(key) > 0)
+            else if (!self.updated && /^(updated date|updated|last-modified)$/.match(key) > 0)
                 self.updated = val;
-            else if (|self.registry_expiry| == 0 && /^(registry expiry date|registrar registration expiration date|expiry date|expiration date|paid-till)$/.match(key) > 0)
+            else if (!self.registry_expiry && /^(registry expiry date|registrar registration expiration date|expiry date|expiration date|paid-till)$/.match(key) > 0)
                 self.registry_expiry = val;
-            else if (|self.abuse_contact| == 0 && /^(registrar abuse contact email|orgabuseemail|abuse-mailbox)$/.match(key) > 0)
+            else if (!self.abuse_contact && /^(registrar abuse contact email|orgabuseemail|abuse-mailbox)$/.match(key) > 0)
                 self.abuse_contact = val;
             else if (/^(domain status|status)$/.match(key) > 0)
                 add self.status[val];
             else if (/^(name server|nserver)$/.match(key) > 0)
                 add self.name_server[val.lower()];
-            else if (|self.server_name| == 0 && /^source$/.match(key) > 0)
+            else if (!self.server_name && /^source$/.match(key) > 0)
                 self.server_name = val;
         }
     }

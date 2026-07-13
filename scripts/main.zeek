@@ -20,9 +20,7 @@ export {
 	global log_policy: Log::PolicyHook;
 
 	## Well-known port for WHOIS.
-	const ports = {
-		43/tcp,
-	} &redef;
+	const ports = { 43/tcp,  } &redef;
 
 	## The record type which contains the fields of the WHOIS log.
 	type Info: record {
@@ -80,7 +78,8 @@ export {
 	##          line terminator) and ``query_type`` (domain, ipv4, ipv6, or asn).
 	##
 	## .. zeek:see:: WHOIS::reply
-	global WHOIS::request: event(c: connection, is_orig: bool, request: WHOIS::Request);
+	global WHOIS::request: event(c: connection, is_orig: bool,
+	    request: WHOIS::Request);
 
 	## Generated for WHOIS replies, carrying the fields the analyzer extracted
 	## from the reply text.
@@ -107,7 +106,8 @@ redef likely_server_ports += { ports };
 
 event zeek_init() &priority=5
 	{
-	Log::create_stream(WHOIS::LOG, Log::Stream($columns=Info, $ev=log_whois, $path="whois", $policy=log_policy));
+	Log::create_stream(WHOIS::LOG, Log::Stream($columns=Info, $ev=log_whois,
+	    $path="whois", $policy=log_policy));
 	Analyzer::register_for_ports(Analyzer::ANALYZER_WHOIS, ports);
 	}
 
@@ -146,21 +146,21 @@ event WHOIS::reply(c: connection, is_orig: bool, reply: WHOIS::Reply)
 	if ( w?$request_time )
 		w$reply_time = network_time() - w$request_time;
 
-	if ( |reply$resource| > 0 )
+	if ( reply?$resource )
 		w$resource = reply$resource;
-	if ( |reply$owner| > 0 )
+	if ( reply?$owner )
 		w$owner = reply$owner;
-	if ( |reply$origin_as| > 0 )
+	if ( reply?$origin_as )
 		w$origin_as = reply$origin_as;
-	if ( |reply$registered| > 0 )
+	if ( reply?$registered )
 		w$registered = reply$registered;
-	if ( |reply$updated| > 0 )
+	if ( reply?$updated )
 		w$updated = reply$updated;
-	if ( |reply$registry_expiry| > 0 )
+	if ( reply?$registry_expiry )
 		w$registry_expiry = reply$registry_expiry;
-	if ( |reply$abuse_contact| > 0 )
+	if ( reply?$abuse_contact )
 		w$abuse_contact = reply$abuse_contact;
-	if ( |reply$server_name| > 0 )
+	if ( reply?$server_name )
 		w$server_name = reply$server_name;
 	if ( |reply$name_server| > 0 )
 		w$name_server = reply$name_server;
