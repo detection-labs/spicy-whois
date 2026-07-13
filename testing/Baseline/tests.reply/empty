@@ -11,5 +11,4 @@ WHOIS::Reply {
   name_server: {}
   status: {}
   reply_size: 0
-  data: 
 }
